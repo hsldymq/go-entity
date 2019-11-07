@@ -1,5 +1,3 @@
-github.com/cowsvagina/go-entity v0.0.1 h1:Y9Y4oC2+jYA9CqqOxn+vQ2iVgmob8sDmJybJGMaq9G8=
-github.com/cowsvagina/go-entity v0.0.1/go.mod h1:BivntlpF0nFC/yh2TGSPJ2AwMa54K7skGSlYXK7zPKI=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
