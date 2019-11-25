@@ -10,6 +10,12 @@ import (
 // DefaultCacher 默认缓存存储
 var DefaultCacher Cacher
 
+// DefaultEnDecoder 默认的缓存数据编码解码器
+var DefaultEnDecoder = &JSONEnDecoder{}
+
+// DefaultExpiration 默认缓存时间
+var DefaultExpiration = 5 * time.Minute
+
 // Cacheable 可缓存实体对象接口
 type Cacheable interface {
 	CacheOption() *CacheOption
@@ -22,19 +28,42 @@ type Cacher interface {
 	Delete(key string) error
 }
 
+// Encoder 编码对象,转换可缓存的字节数组
+type Encoder interface {
+	Encode(Cacheable) ([]byte, error)
+}
+
+// Decoder 解码缓存数据,将缓存还原到entity中
+type Decoder interface {
+	Decode([]byte, Cacheable) error
+}
+
+// JSONEnDecoder 默认缓存数据编码解码器
+type JSONEnDecoder struct{}
+
+// Encode 编码
+func (e *JSONEnDecoder) Encode(c Cacheable) ([]byte, error) {
+	data, err := jsoniter.Marshal(c)
+	return data, errors.WithStack(err)
+}
+
+// Decode 解码
+func (e *JSONEnDecoder) Decode(data []byte, c Cacheable) error {
+	err := jsoniter.Unmarshal(data, c)
+	return errors.WithStack(err)
+}
+
 // CacheOption 缓存参数
 type CacheOption struct {
 	Cacher     Cacher
 	Key        string
 	Expiration time.Duration
-	// PHP那边生成的缓存数据，某些字段被json encode过两次
-	// golang这边在使用这个缓存数据之前，需要先检查相应的字段是否已经被encode过
-	// 如果存在这种情况，需要先decode一次之后再给golang使用
-	AutoDecode []string
+	Encoder    Encoder
+	Decoder    Decoder
 }
 
-func loadCache(cEntity Cacheable) (bool, error) {
-	opt, err := getCacheOption(cEntity)
+func loadCache(c Cacheable) (bool, error) {
+	opt, err := getCacheOption(c)
 	if err != nil {
 		return false, err
 	}
@@ -46,42 +75,38 @@ func loadCache(cEntity Cacheable) (bool, error) {
 		return false, nil
 	}
 
-	if len(opt.AutoDecode) > 0 {
-		fixed, err := autoDecode(data, opt.AutoDecode)
-		if err != nil {
-			return false, errors.WithMessage(err, "auto decode cache")
-		}
-
-		if fixed != nil {
-			data = fixed
-		}
+	if opt.Decoder == nil {
+		err = DefaultEnDecoder.Decode(data, c)
+	} else {
+		err = errors.WithStack(opt.Decoder.Decode(data, c))
 	}
 
-	if err := jsoniter.Unmarshal(data, cEntity); err != nil {
-		return false, errors.WithStack(err)
-	}
-
-	return true, nil
+	return err == nil, err
 }
 
 // SaveCache 保存entity缓存
-func SaveCache(cEntity Cacheable) error {
-	data, err := jsoniter.Marshal(cEntity)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	opt, err := getCacheOption(cEntity)
+func SaveCache(c Cacheable) error {
+	opt, err := getCacheOption(c)
 	if err != nil {
 		return err
+	}
+
+	var data []byte
+	if opt.Encoder == nil {
+		data, err = DefaultEnDecoder.Encode(c)
+	} else {
+		data, err = opt.Encoder.Encode(c)
+	}
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
 	return errors.Wrap(opt.Cacher.Put(opt.Key, data, opt.Expiration), "save entity cache")
 }
 
 // DeleteCache 删除entity缓存
-func DeleteCache(cEntity Cacheable) error {
-	opt, err := getCacheOption(cEntity)
+func DeleteCache(c Cacheable) error {
+	opt, err := getCacheOption(c)
 	if err != nil {
 		return err
 	}
@@ -89,8 +114,8 @@ func DeleteCache(cEntity Cacheable) error {
 	return errors.Wrap(opt.Cacher.Delete(opt.Key), "delete entity cache")
 }
 
-func getCacheOption(cEntity Cacheable) (*CacheOption, error) {
-	opt := cEntity.CacheOption()
+func getCacheOption(c Cacheable) (*CacheOption, error) {
+	opt := c.CacheOption()
 
 	if opt.Cacher == nil {
 		if DefaultCacher == nil {
@@ -105,43 +130,8 @@ func getCacheOption(cEntity Cacheable) (*CacheOption, error) {
 	}
 
 	if opt.Expiration == 0 {
-		opt.Expiration = 5 * time.Minute
+		opt.Expiration = DefaultExpiration
 	}
 
 	return opt, nil
-}
-
-func autoDecode(data []byte, keys []string) ([]byte, error) {
-	if len(keys) == 0 || jsoniter.Get(data).ValueType() != jsoniter.ObjectValue {
-		return nil, nil
-	}
-
-	vals := map[string]jsoniter.RawMessage{}
-	if err := jsoniter.Unmarshal(data, &vals); err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	fixed := false
-	for _, key := range keys {
-		if jsoniter.Get(vals[key]).ValueType() == jsoniter.StringValue {
-			fixed = true
-
-			var s string
-			if err := jsoniter.Unmarshal(vals[key], &s); err != nil {
-				return nil, errors.WithStack(err)
-			}
-
-			vals[key] = []byte(s)
-		}
-	}
-
-	if !fixed {
-		return nil, nil
-	}
-
-	encoded, err := jsoniter.Marshal(vals)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return encoded, nil
 }
