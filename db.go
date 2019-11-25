@@ -168,7 +168,7 @@ func doUpdate(ctx context.Context, ent Entity, db DB) error {
 func doDelete(ctx context.Context, ent Entity, db DB) error {
 	md, err := getMetadata(ent)
 	if err != nil {
-		return errors.WithMessage(err, "delete entity")
+		return errors.Wrap(err, "delete entity")
 	}
 
 	stmt, ok := deleteStatements[md.ID]

@@ -74,7 +74,7 @@ type Metadata struct {
 func NewMetadata(ent Entity) (*Metadata, error) {
 	columns, err := getColumns(ent)
 	if err != nil {
-		return nil, errors.WithMessage(err, "entity metadata")
+		return nil, errors.Wrap(err, "entity metadata")
 	}
 
 	id := entityID(ent)
@@ -190,19 +190,19 @@ func Load(ctx context.Context, ent Entity, db DB) error {
 	cv, cacheable := ent.(Cacheable)
 	if cacheable {
 		if loaded, err := loadCache(cv); err != nil {
-			return errors.WithMessage(err, "load entity from cache")
+			return errors.Wrap(err, "load entity from cache")
 		} else if loaded {
 			return nil
 		}
 	}
 
 	if err := doLoad(ctx, ent, db); err != nil {
-		return errors.WithMessage(err, "load entity from db")
+		return errors.Wrap(err, "load entity from db")
 	}
 
 	if cacheable {
 		if err := SaveCache(cv); err != nil {
-			return errors.WithMessage(err, "found entity")
+			return errors.Wrap(err, "found entity")
 		}
 	}
 
@@ -215,7 +215,7 @@ func Insert(ctx context.Context, ent Entity, db DB) (int64, error) {
 	defer cancel()
 
 	if err := ent.OnEntityEvent(ctx, EventBeforeInsert); err != nil {
-		return 0, errors.WithMessage(err, "before insert entity")
+		return 0, errors.Wrap(err, "before insert entity")
 	}
 
 	lastID, err := doInsert(ctx, ent, db)
@@ -223,11 +223,11 @@ func Insert(ctx context.Context, ent Entity, db DB) (int64, error) {
 		if isConflictError(db.DriverName(), err) {
 			return 0, errors.Wrap(ErrConflict, "insert entity")
 		}
-		return 0, errors.WithMessage(err, "insert entity")
+		return 0, errors.Wrap(err, "insert entity")
 	}
 
 	if err := ent.OnEntityEvent(ctx, EventAfterInsert); err != nil {
-		return 0, errors.WithMessage(err, "after insert entity")
+		return 0, errors.Wrap(err, "after insert entity")
 	}
 
 	return lastID, nil
@@ -239,20 +239,20 @@ func Update(ctx context.Context, ent Entity, db DB) error {
 	defer cancel()
 
 	if err := ent.OnEntityEvent(ctx, EventBeforeUpdate); err != nil {
-		return errors.WithMessage(err, "before update entity")
+		return errors.Wrap(err, "before update entity")
 	}
 
 	if err := doUpdate(ctx, ent, db); err != nil {
-		return errors.WithMessage(err, "update entity")
+		return errors.Wrap(err, "update entity")
 	}
 
 	if v, ok := ent.(Cacheable); ok {
 		if err := DeleteCache(v); err != nil {
-			return errors.WithMessage(err, "after update entity")
+			return errors.Wrap(err, "after update entity")
 		}
 	}
 
-	return errors.WithMessage(
+	return errors.Wrap(
 		ent.OnEntityEvent(ctx, EventAfterUpdate),
 		"after update entity",
 	)
@@ -273,11 +273,11 @@ func Delete(ctx context.Context, ent Entity, db DB) error {
 
 	if v, ok := ent.(Cacheable); ok {
 		if err := DeleteCache(v); err != nil {
-			return errors.WithMessage(err, "after delete entity")
+			return errors.Wrap(err, "after delete entity")
 		}
 	}
 
-	return errors.WithMessage(
+	return errors.Wrap(
 		ent.OnEntityEvent(ctx, EventAfterDelete),
 		"after delete entity",
 	)
